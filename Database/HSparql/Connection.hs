@@ -7,12 +7,14 @@ module Database.HSparql.Connection
     , askQuery
     , updateQuery
     , describeQuery
+    , deleteQuery
     -- * submit queries using raw SPARQL strings
     , selectQueryRaw
     , constructQueryRaw
     , askQueryRaw
     , updateQueryRaw
     , describeQueryRaw
+    , deleteQueryRaw
     )
 where
 
@@ -114,6 +116,9 @@ constructQuery ep q = constructQueryRaw ep (createConstructQuery q)
 describeQuery :: (RDF.Rdf a) => Database.HSparql.Connection.EndPoint -> Query DescribeQuery -> IO (RDF.RDF a)
 describeQuery ep q = describeQueryRaw ep (createDescribeQuery q)
 
+-- |Connect to remote 'EndPoint' and delete certain triples 
+deleteQuery :: Database.HSparql.Connection.EndPoint -> Query DeleteQuery -> IO Bool
+deleteQuery ep q = deleteQueryRaw ep (createDeleteQuery q)
 
 selectQueryRaw :: Database.HSparql.Connection.EndPoint -> String -> IO (Maybe [[BindingValue]])
 selectQueryRaw ep q = do
@@ -170,6 +175,20 @@ describeQueryRaw ep q = do
   case rdfGraph of
     Left e -> error $ show e
     Right graph -> return graph
+
+deleteQueryRaw :: Database.HSparql.Connection.EndPoint -> String -> IO Bool
+deleteQueryRaw endpoint queryString = do
+  let 
+   h1 = mkHeader HdrContentLength $ show (length queryString)
+   h2 = mkHeader HdrContentType "application/sparql-update"
+   h3 = mkHeader HdrUserAgent "hsparql-client"
+   request = Request { rqURI = fromJust $ parseURI endpoint
+                     , rqHeaders = [h1,h2,h3]
+                     , rqMethod = POST
+                     , rqBody = queryString
+                     }
+  response <- simpleHTTP request >>= getResponseBody
+  return $ parseUpdate response
 
 -- |Takes a generated uri and makes simple HTTP request,
 -- asking for RDF N3 serialization. Returns either 'ParseFailure' or 'RDF'

@@ -30,11 +30,13 @@ instance CreateQuery (Query UpdateQuery) where
 instance CreateQuery (Query DescribeQuery) where
   createQuery = T.pack . createDescribeQuery
 
+instance CreateQuery (Query DeleteQuery) where
+  createQuery = T.pack . createDeleteQuery
+
 normalizeWhitespace :: Text -> Text
 normalizeWhitespace = T.strip
-                      . (T.replace "  " " ")
-                      . (T.replace "  " " ")
-                      . (T.replace "  " " ")
+                      . T.unwords
+                      . T.words
                       . (T.replace "\n" " ")
 
 queryTexts :: [(Text, Text)]
@@ -245,6 +247,26 @@ WHERE
         triple_ s (ex .:. "foo bar") o
 
         selectVars [s, o]
+    ),
+    ([s|
+      PREFIX ex: <http://example.com/>
+      DELETE {
+        ?x0 ?x1 ?x2 .
+      }
+      WHERE {
+        ?x0 ?x1 ?x2 .
+        ?x0 ex:someProperty "someValue" .
+      }
+    |]
+    , createQuery $ do 
+        ex <- prefix "ex" (iriRef "http://example.com/")
+        s <- var
+        p <- var
+        o <- var
+        tr <- deleteTriple s p o
+        triple s p o
+        triple s (ex .:. "someProperty") ("someValue":: T.Text)
+        return $ DeleteQuery {queryDelete = [tr]}
     )
 
   ]

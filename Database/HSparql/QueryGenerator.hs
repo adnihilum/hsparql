@@ -9,6 +9,7 @@ module Database.HSparql.QueryGenerator
   , createAskQuery
   , createUpdateQuery
   , createDescribeQuery
+  , createDeleteQuery
   -- * Query Actions
   , prefix
   , var
@@ -18,6 +19,7 @@ module Database.HSparql.QueryGenerator
   , constructTriple, constructTriple_
   , askTriple, askTriple_
   , updateTriple, updateTriple_
+  , deleteTriple, deleteTriple_
   , describeIRI, describeIRI_
   , optional, optional_
   , union, union_
@@ -109,6 +111,7 @@ module Database.HSparql.QueryGenerator
   , AskQuery(..)
   , UpdateQuery(..)
   , DescribeQuery(..)
+  , DeleteQuery(..)
 
   -- * Classes
   , TermLike (..)
@@ -183,6 +186,16 @@ createDescribeQuery q = execQuery0 specifyType qshow
           query <- q
           modify $ \s -> s { describeURI = Just (queryDescribe query), queryType = DescribeType }
 
+-- | Execute a 'Delete Query' action, returning the 'String' representation of the query.
+createDeleteQuery :: Query DeleteQuery -> String
+createDeleteQuery q = execQuery0 specifyType qshow
+          where 
+            specifyType :: Query ()
+            specifyType = do
+              query <- q
+              modify $ \s -> s {deleteTriples = queryDelete query, queryType = DeleteType}
+
+
 -- Manipulate data within monad
 
 -- |Add a prefix to the query, given an IRI reference, and return it.
@@ -244,6 +257,15 @@ updateTriple a b c = do
 
 updateTriple_ :: (SubjectTermLike a, PredicateTermLike b, ObjectTermLike c) => a -> b -> c -> Query ()
 updateTriple_ a b c = void $ updateTriple a b c
+
+deleteTriple :: (SubjectTermLike a, PredicateTermLike b, ObjectTermLike c) => a -> b -> c -> Query Pattern
+deleteTriple a b c = do 
+  let t = QTriple (varOrTerm a) (varOrTerm b) (varOrTerm c)
+  modify $ \s -> s { deleteTriples = appendTriple t (deleteTriples s)}
+  return t
+
+deleteTriple_ :: (SubjectTermLike a, PredicateTermLike b, ObjectTermLike c) => a -> b -> c -> Query ()
+deleteTriple_ a b c = void $ deleteTriple a b c
 
 describeIRI :: IRIRef -> Query IRIRef
 describeIRI newIri = do
@@ -728,6 +750,7 @@ queryData = QueryData
     , constructTriples = []
     , askTriples = []
     , updateTriples = []
+    , deleteTriples = []
     , describeURI = Nothing
     , duplicates = NoLimits
     , groups    = []
@@ -903,6 +926,7 @@ data QueryData = QueryData
     , constructTriples :: [Pattern] -- QTriple
     , askTriples :: [Pattern]
     , updateTriples :: [Pattern]
+    , deleteTriples :: [Pattern]
     , describeURI :: Maybe IRIRef
     , duplicates :: Duplicates
     , groups    :: [GroupBy]
@@ -912,7 +936,7 @@ data QueryData = QueryData
                deriving (Show)
 
 
-data QueryType = SelectType | ConstructType | AskType | UpdateType | DescribeType | TypeNotSet
+data QueryType = SelectType | ConstructType | AskType | UpdateType | DescribeType | DeleteType | TypeNotSet
                deriving (Show)
 
 data ConstructQuery = ConstructQuery
@@ -929,6 +953,10 @@ data SelectQuery = SelectQuery
 
 data DescribeQuery = DescribeQuery
     { queryDescribe :: IRIRef }
+
+data DeleteQuery = DeleteQuery {
+  queryDelete :: [Pattern]
+}
 
 -- QueryShow instances
 instance QueryShow BlankNodePattern where
@@ -1151,6 +1179,13 @@ instance QueryShow QueryData where
                      , qshow (updateTriples qd)
                      , "}"
                      ]
+            DeleteType ->
+              unwords [ prefixDecl
+              , "DELETE {"
+              , qshow (deleteTriples qd)
+              , "}"
+              , whereClause
+              ]
             -- FIXME
             TypeNotSet ->
               error "instance QueryShow QueryData: TypeNotSet not supported."
